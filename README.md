@@ -70,40 +70,7 @@
 - npm or yarn
 - Cloudinary account (for image uploads)
 
-## 🛠️ Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/aravinth021004/Agri-Link.git
-   cd Agri-Link/agrilink
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   Update `.env` with your database URL, API keys, and secrets. See [Environment Variables](#-environment-variables) below.
-
-4. **Set up the database**
-   ```bash
-   npx prisma migrate dev
-   npx prisma db seed
-   ```
-
-5. **Run the development server**
-   ```bash
-   npm run dev
-   ```
-
-6. **Open in browser**
-   ```
-   http://localhost:3000
-   ```
 
 ## 📁 Project Structure
 
@@ -291,9 +258,7 @@ This project is licensed under the MIT License.
 
 ## 👨‍💻 Author
 
-**Aravinthkumar P** - [GitHub](https://github.com/aravinth021004)
 
----
 
 <p align="center">
   Made with ❤️ for farmers and consumers
