@@ -1,0 +1,172 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import prisma from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
+
+// GET all users (admin only)
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user || session.user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      )
+    }
+
+    const { searchParams } = new URL(request.url)
+    const role = searchParams.get('role')
+    const status = searchParams.get('status')
+    const search = searchParams.get('search')
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '20')
+
+    const skip = (page - 1) * limit
+
+    const where: Record<string, unknown> = {}
+
+    if (role) {
+      where.role = role
+    }
+
+    if (status) {
+      where.status = status
+    }
+
+    if (search) {
+      where.OR = [
+        { fullName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+      ]
+    }
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          fullName: true,
+          role: true,
+          profileImage: true,
+          status: true,
+          createdAt: true,
+          _count: {
+            select: {
+              products: true,
+              orders: true,
+              farmerOrders: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count({ where }),
+    ])
+
+    return NextResponse.json({
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    })
+  } catch (error) {
+    console.error('Get users error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// PUT update user status or role (admin only)
+export async function PUT(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user || session.user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      )
+    }
+
+    const body = await request.json()
+    const { userId, status, role } = body
+
+    if (!userId || (!status && !role)) {
+      return NextResponse.json(
+        { error: 'User ID and status or role are required' },
+        { status: 400 }
+      )
+    }
+
+    const updateData: Record<string, string> = {}
+
+    if (status) {
+      if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
+        return NextResponse.json(
+          { error: 'Invalid status' },
+          { status: 400 }
+        )
+      }
+      updateData.status = status
+    }
+
+    if (role) {
+      if (!['CUSTOMER', 'FARMER', 'ADMIN'].includes(role)) {
+        return NextResponse.json(
+          { error: 'Invalid role' },
+          { status: 400 }
+        )
+      }
+      updateData.role = role
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        status: true,
+        role: true,
+      },
+    })
+
+    // If the user's role is being downgraded to CUSTOMER, cancel their active or pending subscriptions
+    // so they are not blocked from buying a new subscription in the future.
+    if (role === 'CUSTOMER') {
+      await prisma.subscription.updateMany({
+        where: {
+          userId: userId,
+          status: {
+            in: ['ACTIVE', 'PENDING'],
+          },
+        },
+        data: {
+          status: 'CANCELLED',
+        },
+      })
+    }
+
+    console.log(`👤 Admin ${session.user.fullName} updated user ${user.fullName}: ${JSON.stringify(updateData)}`)
+
+    return NextResponse.json(user)
+  } catch (error) {
+    console.error('Update user error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
